@@ -16,8 +16,8 @@ from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.client import TradingClient
 
-ALPACA_API_KEY = 'PKIENOTYZMTOQ1RUQKM0'
-ALPACA_SECRET_KEY = 'BsCGfgfACM7G0RFauZx6aMH0LSr56yFfNEbSMRN3'
+ALPACA_API_KEY = 'KEY'
+ALPACA_SECRET_KEY = 'KEY'
 MAX_TRADES_PER_DAY = 3
 trading_client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=True)
 DayStartFunds = float(trading_client.get_account().non_marginable_buying_power)
@@ -45,9 +45,9 @@ def placeSellOrder(symbol:str):
     trading_client.close_position(symbol_or_asset_id=symbol)
 
 #Telegram
-token = "6881038859:AAFsRIVhhkzdRNhNYH77QFNId1qKsYmmMr8"
+token = "Token"
 method = 'sendMessage'
-myuserid = 6685760530
+myuserid = 'ID'
 telegram_url = 'https://api.telegram.org/bot{0}/{1}'.format(token, method)
 
 #Stock Screener
