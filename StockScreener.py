@@ -122,7 +122,7 @@ def Screen_Stocks():
             
             RSI = 100 - (100 / (1 + RS[-1:])) < SCREEN_RSI_MAX
             Vol_Ratio = stock.basic_info['lastVolume'] > SCREEN_VOL_RATIO*stock.basic_info['threeMonthAverageVolume']
-            Trend = stock.basic_info['fiftyDayAverage'] > stock.basic_info['twoHundredDayAverage']
+            #Trend = stock.basic_info['fiftyDayAverage'] > stock.basic_info['twoHundredDayAverage']
             
             if (RSI[symbol][0] and Vol_Ratio and Trend):
                 screenedStockSymbols.append(symbol)

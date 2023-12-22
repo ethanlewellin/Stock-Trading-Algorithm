@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Stock Prediction Model
-
-@author: ethan
-"""
 from Variables import today, N_ESTIMATORS, class_weight_TRUE, class_weight_FALSE, FP_ALLOWANCE
 import pandas as pd
 import numpy as np
@@ -14,12 +8,14 @@ from sklearn.preprocessing import MinMaxScaler
 import yfinance as yf
 import warnings
 
+
 pd.options.mode.chained_assignment = None
 warnings.simplefilter("ignore")
 
 def ema(values, period):
     values = np.array(values)
     return pd.ewm(values, span=period)[-1]
+
 
 scalerX = MinMaxScaler(feature_range=(0,1))
 scalerY = MinMaxScaler(feature_range=(0,1))

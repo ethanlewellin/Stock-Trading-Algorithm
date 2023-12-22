@@ -11,6 +11,39 @@ from datetime import datetime, date, timedelta, time
 today = date.today()
 yesterday = datetime.now() - timedelta(1)
 
+#Alpaca
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.client import TradingClient
+
+ALPACA_API_KEY = 'PKIENOTYZMTOQ1RUQKM0'
+ALPACA_SECRET_KEY = 'BsCGfgfACM7G0RFauZx6aMH0LSr56yFfNEbSMRN3'
+MAX_TRADES_PER_DAY = 3
+trading_client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=True)
+DayStartFunds = float(trading_client.get_account().non_marginable_buying_power)
+
+def placeBuyOrder(symbol:str, currentPrice:float):
+    quantity = min((DayStartFunds/MAX_TRADES_PER_DAY) // currentPrice,
+                   float(trading_client.get_account().non_marginable_buying_power))
+    
+    # preparing order data
+    market_order_data = MarketOrderRequest(
+                        symbol=symbol,
+                        qty= quantity,
+                        side=OrderSide.BUY,
+                        time_in_force= TimeInForce.DAY
+                    )
+
+    # Market order
+    market_order = trading_client.submit_order(
+                    order_data=market_order_data
+                    )
+    
+    return
+
+def placeSellOrder(symbol:str):
+    trading_client.close_position(symbol_or_asset_id=symbol)
+
 #Telegram
 token = "6881038859:AAFsRIVhhkzdRNhNYH77QFNId1qKsYmmMr8"
 method = 'sendMessage'

@@ -12,11 +12,15 @@ from datetime import datetime, time
 from pytz import timezone
 from collections import Counter
 import statistics
+from alpaca.trading.client import TradingClient
 
-from Variables import RSI_UNDERSOLD, REL_VOL_UPPER, PERCENT_B_Lower, RSI_OVERSOLD, REL_VOL_LOWER, PERCENT_B_UPPER, INCREASE_LOW, INCREASE_HIGH, LAST_BUY_TIME, STOPLOSS, check_condition
+
+from Variables import RSI_UNDERSOLD, REL_VOL_UPPER, PERCENT_B_Lower, RSI_OVERSOLD, REL_VOL_LOWER, PERCENT_B_UPPER, INCREASE_LOW, INCREASE_HIGH, LAST_BUY_TIME, STOPLOSS, check_condition, ALPACA_API_KEY, ALPACA_SECRET_KEY, trading_client, placeBuyOrder,placeSellOrder,MAX_TRADES_PER_DAY
 from TelegramMessenger import send_telegram_message
 
 def stockTradingRoutine(stockSummaryDF):
+    numTrades = 0
+    completeTrades=0
     historyDfList = []
     for symbol in stockSummaryDF['Symbol']:
         tempList=yf.download(tickers=symbol, period="5d", interval="1m",progress=False)['Close'][::-1].to_list()[:60]
@@ -56,6 +60,8 @@ def stockTradingRoutine(stockSummaryDF):
         
         #stop if all stocks sold
         if not stockSummaryDF['Sell Price'].isnull().any():
+            break
+        if completeTrades==MAX_TRADES_PER_DAY:
             break
             
         now = datetime.now(timezone('EST'))
@@ -102,8 +108,8 @@ def stockTradingRoutine(stockSummaryDF):
             Bollinger_Lower = Rolling_Mean - (historyDF[symbol].rolling(window=5).std() * 1.5)
             Band_Width = Bollinger_Upper - Bollinger_Lower
             Avg_Band_Width = Band_Width.rolling(window=5).mean()
-            percentB = ((Rolling_Mean[historyDF.shape[0]] - Bollinger_Lower[historyDF.shape[0]]) /
-                        (Bollinger_Upper[historyDF.shape[0]] - Bollinger_Lower[historyDF.shape[0]]))
+            #percentB = ((1000*(Rolling_Mean[historyDF.shape[0]] - Bollinger_Lower[historyDF.shape[0]])) /
+            #            (1000*(Bollinger_Upper[historyDF.shape[0]] - Bollinger_Lower[historyDF.shape[0]])))
 
             BuyConditions = {
                     'EMA9': (EMA55, EMA9, 'less_than'),
@@ -114,31 +120,18 @@ def stockTradingRoutine(stockSummaryDF):
                     'Rel_Volume': (stock.basic_info['lastVolume']/stock.basic_info['tenDayAverageVolume'], REL_VOL_UPPER, 'greater_than'),
                     'Bollinger_Breakout': (currentPrice, Bollinger_Lower[historyDF.shape[0]], 'less_than'),
                     'Bollinger_Squeeze': (Band_Width[historyDF.shape[0]], Avg_Band_Width[historyDF.shape[0]], 'less_than'),
-                    'Percent_B': (percentB, PERCENT_B_Lower, 'less_than'),
+                    #'Percent_B': (percentB, PERCENT_B_Lower, 'less_than'),
                     'Time': (now.time(), time(11,0), 'less_than')
                 }
 
-            SellConditions = {
-                    'EMA9': (EMA55, EMA9, 'greater_than'),
-                    'EMA21': (EMA55, EMA21, 'greater_than'),
-                    'SMA5': (SMA21, SMA5, 'greater_than'),
-                    'SMA15': (SMA21, SMA15, 'greater_than'),
-                    'RSI': (RSI, RSI_OVERSOLD, 'greater_than'),
-                    'Rel_Volume': (stock.basic_info['lastVolume']/stock.basic_info['tenDayAverageVolume'], REL_VOL_LOWER, 'less_than'),
-                    'Bollinger_Breakout': (currentPrice, Bollinger_Upper[historyDF.shape[0]], 'greater_than'),
-                    'Bollinger_Squeeze': (Band_Width[historyDF.shape[0]], Avg_Band_Width[historyDF.shape[0]], 'greater_than'),
-                    'Percent_B': (percentB, PERCENT_B_UPPER, 'greater_than'),
-                    'Increase1': (currentPrice/float(stockSummaryDF[stockSummaryDF['Symbol'] == symbol]['Buy Price']), 1 + INCREASE_LOW, 'greater_than'),
-                    'Increase2': (currentPrice/float(stockSummaryDF[stockSummaryDF['Symbol'] == symbol]['Buy Price']), 1 + INCREASE_HIGH, 'greater_than')
-                }
-
-
             buySignal = Counter([check_condition(*cond) for cond in BuyConditions.values()])[True]/len(BuyConditions) >= 0.6
-            sellSignal = Counter([check_condition(*cond) for cond in SellConditions.values()])[True]/len(SellConditions) >= 0.5
         
             #Buy stock if good to buy
             if stockSummaryDF.loc[symbolNum-1, 'Buy Price'] == None and now.time():
-                if buySignal == True and now.time() <= LAST_BUY_TIME: 
+                if buySignal == True and now.time() <= LAST_BUY_TIME and numTrades < MAX_TRADES_PER_DAY: 
+                    numTrades+=1
+                    
+                    placeBuyOrder(symbol=symbol, currentPrice=currentPrice)
                     
                     stockSummaryDF.loc[symbolNum-1, 'Buy Price'] = currentPrice
                     stockSummaryDF.loc[symbolNum-1, 'Buy Time'] = now.time()
@@ -156,11 +149,28 @@ def stockTradingRoutine(stockSummaryDF):
             
             buyPrice = stockSummaryDF.loc[symbolNum-1, 'Buy Price']
 
+            SellConditions = {
+                    'EMA9': (EMA55, EMA9, 'greater_than'),
+                    'EMA21': (EMA55, EMA21, 'greater_than'),
+                    'SMA5': (SMA21, SMA5, 'greater_than'),
+                    'SMA15': (SMA21, SMA15, 'greater_than'),
+                    'RSI': (RSI, RSI_OVERSOLD, 'greater_than'),
+                    'Rel_Volume': (stock.basic_info['lastVolume']/stock.basic_info['tenDayAverageVolume'], REL_VOL_LOWER, 'less_than'),
+                    'Bollinger_Breakout': (currentPrice, Bollinger_Upper[historyDF.shape[0]], 'greater_than'),
+                    'Bollinger_Squeeze': (Band_Width[historyDF.shape[0]], Avg_Band_Width[historyDF.shape[0]], 'greater_than'),
+                    #'Percent_B': (percentB, PERCENT_B_UPPER, 'greater_than'),
+                    'Increase1': (currentPrice/float(stockSummaryDF[stockSummaryDF['Symbol'] == symbol]['Buy Price']), 1 + INCREASE_LOW, 'greater_than'),
+                    'Increase2': (currentPrice/float(stockSummaryDF[stockSummaryDF['Symbol'] == symbol]['Buy Price']), 1 + INCREASE_HIGH, 'greater_than')
+                }
+                
+            sellSignal = Counter([check_condition(*cond) for cond in SellConditions.values()])[True]/len(SellConditions) >= 0.5
+
             #Sell stock if time is good
             if sellSignal == True:
                 sellPrice = currentPrice
                 Change = ((sellPrice - buyPrice)/buyPrice)*100
                  
+                placeSellOrder(symbol=symbol) 
                 stockSummaryDF.loc[symbolNum-1, 'Sell Price'] = sellPrice
                 stockSummaryDF.loc[symbolNum-1, 'Sell Time'] = now.time()
                 stockSummaryDF.loc[symbolNum-1, '% Change'] = Change
@@ -177,7 +187,7 @@ def stockTradingRoutine(stockSummaryDF):
                 sellPrice = currentPrice
                 buyPrice = stockSummaryDF.loc[symbolNum-1, 'Buy Price']
                 Change = ((sellPrice - buyPrice)/buyPrice)*100
-                
+                            
                 stockSummaryDF.loc[symbolNum-1, 'Sell Price'] = sellPrice
                 stockSummaryDF.loc[symbolNum-1, 'Sell Time'] = now.time()
                 stockSummaryDF.loc[symbolNum-1, '% Change'] = Change
@@ -186,7 +196,8 @@ def stockTradingRoutine(stockSummaryDF):
                       "\n Buy Price: " + str(float(stockSummaryDF[stockSummaryDF['Symbol'] == symbol]['Buy Price'])) +
                       "\n Sell Price: "+ str(sellPrice) +
                       "\n % Increase: " + str(Change))
-                                
+                    
+                placeSellOrder(symbol=symbol) 
                 send_telegram_message(message=message)
                 
         
@@ -225,6 +236,7 @@ def stockTradingRoutine(stockSummaryDF):
                       "\n % Increase: " + str(Change))
             
             send_telegram_message(message=message)
+            placeSellOrder(symbol=symbol) 
 
             
     stockSummaryDF.dropna(inplace=True)        
@@ -232,7 +244,11 @@ def stockTradingRoutine(stockSummaryDF):
 
 
     #display(stockSummaryDF)
-    message = str('Average %Change in Your Trades Today: \n' + str(round(statistics.mean(stockSummaryDF['% Change']),3)) + '%')
-    send_telegram_message(message=message)
+    try:
+        message = str('Average %Change in Your Trades Today: \n' + str(round(statistics.mean(stockSummaryDF['% Change']),3)) + '%')
+        send_telegram_message(message=message)
+    except:
+        message = 'No trades made today'
+        send_telegram_message(message=message)
     
     return stockSummaryDF
