@@ -12,10 +12,8 @@ from datetime import date, timedelta
 from urllib.request import Request
 from bs4 import BeautifulSoup
 import yfinance as yf
-from Variables import today, SCREEN_MAX_PRICE, SCREEN_VOL_RATIO, SCREEN_RSI_MAX
+from Variables import today, SCREEN_MAX_PRICE, SCREEN_VOL_RATIO, SCREEN_RSI_MAX #If you have finviz pro you can incorporate these but I do not
 import string    
-
-alphabet = list(string.ascii_uppercase)
 
 def Screen_Stocks():
     
@@ -56,27 +54,24 @@ def Screen_Stocks():
     yahooPS = pd.DataFrame(yahooPS)
     yahooSymbols = list(yahooPS[yahooPS["Volume"] > SCREEN_VOL_RATIO* yahooPS["Avg Vol (3 month)"]]["Symbol"])
     
-    tickers = []
-    for letter in alphabet:
-        url = 'https://stock-screener.org/stock-list.aspx?alpha=' + letter
+    url = "https://finviz.com/screener.ashx?v=111&f=an_recom_buybetter,geo_usa,sh_price_u5,sh_relvol_o5,ta_rsi_nob60,targetprice_a10&o=-relativevolume"
+    
+    req = Request(
+        url=url,
+        headers={'User-Agent': 'Mozilla/5.0'}
+    )
         
-        req = Request(
-            url=url,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
+    response = urllib.request.urlopen(req)
         
-        response = urllib.request.urlopen(req)
+    html = response.read()
+    soup = BeautifulSoup(html, parser='lxml', features='lxml')
         
+    table = soup.find('table', {'class': "styled-table-new is-rounded is-tabular-nums w-full screener_table"})
         
-        html = response.read()
-        soup = BeautifulSoup(html, parser='lxml', features='lxml')
-        
-        table = soup.find('table', {'class': 'styled'})
-        
-        if table:
+    if table:
             # Iterate through the rows and cells to extract the data
             data = []
-            headers = ["Symbol","Chart","Open","High","Low","Close","Volume","% Change","Stock Predictions"]
+            headers = ['No.','Ticker','Company','Sector','Industry','Country','Market Cap','P/E','Price	Change','Volume']
         
             for row in table.find_all('tr'):
                 columns = row.find_all('td')
@@ -84,50 +79,12 @@ def Screen_Stocks():
                     # Extract and print the data from all columns
                     column_data = [column.get_text() for column in columns]
                     data.append(dict(zip(headers, column_data)))
-                    
-        df = pd.DataFrame(pd.concat([pd.Series(row) for row in data], axis=1).T)
-        df['Symbol'] = [symbol.strip() for symbol in df['Symbol']]
-        df['Volume'] = pd.to_numeric(df['Volume'])
-        df['Open'] = pd.to_numeric(df['Open'])
-        df = df[df['Symbol'].str.isalpha()] #get rid of error causing tickers
-        df = df[df['Open'] < SCREEN_MAX_PRICE] #look at stocks below price point
-        tickers = tickers + list(df['Symbol'][df['Open'] < SCREEN_MAX_PRICE])
         
-        response.close()
-    
-    end_date = today.strftime("%Y-%m-%d")
-    d1 = date.today() - timedelta(days=360*5) #for last 5 years
-    start_date = d1.strftime("%Y-%m-%d")
-    
-    stockData = yf.download(tickers = tickers[:],
-                      start = start_date,
-                      end = end_date,
-                      progress=False
-                      )
-    
-    screenedStockSymbols = []
-    for symbol in tickers:
-        try:
-            stock = yf.Ticker(symbol)
-            idvStock = stockData.loc[:, (slice(None), symbol)]
-            idvStock = idvStock.dropna()
-            
-            delta = idvStock['Close'].diff()
-            # Calculate gains and losses
-            gains = delta.where(delta > 0, 0)
-            losses = -delta.where(delta < 0, 0)
-            avg_gain = gains.rolling(window=20, min_periods=1).mean()
-            avg_loss = losses.rolling(window=20, min_periods=1).mean()
-            RS = avg_gain / avg_loss
-            
-            RSI = 100 - (100 / (1 + RS[-1:])) < SCREEN_RSI_MAX
-            Vol_Ratio = stock.basic_info['lastVolume'] > SCREEN_VOL_RATIO*stock.basic_info['threeMonthAverageVolume']
-            #Trend = stock.basic_info['fiftyDayAverage'] > stock.basic_info['twoHundredDayAverage']
-            
-            if (RSI[symbol][0] and Vol_Ratio and Trend):
-                screenedStockSymbols.append(symbol)
-        except:
-            continue
+    finvizDF = pd.concat([pd.Series(row) for row in data], axis=1).T
+    # Close the HTTP response
+    response.close()
+                                
+    finvizSymbols = list(finvizDF['Ticker'])
         
     print("Finished Screening Stocks")
-    return list(set(screenedStockSymbols + yahooSymbols))
+    return list(set(finvizSymbols + yahooSymbols))
